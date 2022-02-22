@@ -4,10 +4,13 @@ import android.Manifest;
 import android.app.AlertDialog;
 import android.app.ProgressDialog;
 import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.location.LocationManager;
 import android.os.Build;
@@ -67,11 +70,13 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private Animation operatingAnim;
     private DeviceAdapter mDeviceAdapter;
     private ProgressDialog progressDialog;
+    private BluetoothMonitorReceiver bleListenerReceiver = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        registerBluetoothMonitorReceiver();
         initView();
 
         BleManager.getInstance().init(getApplication());
@@ -80,6 +85,21 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 .setReConnectCount(1, 5000)
                 .setConnectOverTime(20000)
                 .setOperateTimeout(5000);
+    }
+    private void registerBluetoothMonitorReceiver(){
+        // 初始化广播
+        this.bleListenerReceiver = new BluetoothMonitorReceiver();
+        IntentFilter intentFilter = new IntentFilter();
+        // 监视蓝牙关闭和打开的状态
+        intentFilter.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
+
+        // 监视蓝牙设备与APP连接的状态
+        intentFilter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
+        intentFilter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
+
+        // 注册广播
+        registerReceiver(this.bleListenerReceiver, intentFilter);
+
     }
 
     @Override
@@ -93,6 +113,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         super.onDestroy();
         BleManager.getInstance().disconnectAllDevice();
         BleManager.getInstance().destroy();
+        unregisterReceiver(this.bleListenerReceiver);
     }
 
     @Override
@@ -345,8 +366,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private void checkPermissions() {
         BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+//        bluetoothAdapter.enable();
         if (!bluetoothAdapter.isEnabled()) {
             Toast.makeText(this, getString(R.string.please_open_blue), Toast.LENGTH_LONG).show();
+            bluetoothAdapter.enable();
             return;
         }
 
@@ -413,6 +436,45 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             if (checkGPSIsOpen()) {
                 setScanRule();
                 startScan();
+            }
+        }
+    }
+
+     class BluetoothMonitorReceiver extends BroadcastReceiver {
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            if(action != null){
+                switch (action) {
+                    case BluetoothAdapter.ACTION_STATE_CHANGED:
+                        int blueState = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, 0);
+                        switch (blueState) {
+                            case BluetoothAdapter.STATE_TURNING_ON:
+                                Toast.makeText(context,"蓝牙正在打开",Toast.LENGTH_SHORT).show();
+                                break;
+                            case BluetoothAdapter.STATE_ON:
+                                Toast.makeText(context,"蓝牙已经打开",Toast.LENGTH_SHORT).show();
+                                checkPermissions();
+                                break;
+                            case BluetoothAdapter.STATE_TURNING_OFF:
+                                Toast.makeText(context,"蓝牙正在关闭",Toast.LENGTH_SHORT).show();
+                                break;
+                            case BluetoothAdapter.STATE_OFF:
+                                Toast.makeText(context,"蓝牙已经关闭",Toast.LENGTH_SHORT).show();
+                                break;
+                        }
+                        break;
+
+                    case BluetoothDevice.ACTION_ACL_CONNECTED:
+                        Toast.makeText(context,"蓝牙设备已连接",Toast.LENGTH_SHORT).show();
+                        break;
+
+                    case BluetoothDevice.ACTION_ACL_DISCONNECTED:
+                        Toast.makeText(context,"蓝牙设备已断开",Toast.LENGTH_SHORT).show();
+                        break;
+                }
+
             }
         }
     }
